@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Inputs (from pipeline)
 DISPLAY_NAME="$1"
 ALIAS_NAME="$2"
 BILLING_SCOPE="$3"
@@ -13,6 +12,9 @@ log() {
   echo ""
 }
 
+log "Azure CLI version (pre-upgrade check)"
+az version
+
 log "Ensuring 'account' extension is installed / up to date"
 az extension add -n account --upgrade
 
@@ -20,15 +22,10 @@ log "Current Azure context (who am I?)"
 az account show -o table
 
 log "Requesting new subscription using alias '${ALIAS_NAME}'"
-az account subscription create \
-  --display-name "${DISPLAY_NAME}" \
-  --billing-scope "${BILLING_SCOPE}" \
-  --workload "${WORKLOAD}" \
-  --alias "${ALIAS_NAME}"
+az account subscription create   --display-name "${DISPLAY_NAME}"   --billing-scope "${BILLING_SCOPE}"   --workload "${WORKLOAD}"   --alias "${ALIAS_NAME}"
 
 log "Alias created / requested. Retrieving details..."
 SUB_JSON=$(az account subscription alias show --alias "${ALIAS_NAME}" -o json)
-
 echo "$SUB_JSON" | jq -r '.'
 
 SUB_ID=$(echo "$SUB_JSON" | jq -r '.properties.subscriptionId')
@@ -60,6 +57,5 @@ if [[ "$STATUS" != "Enabled" ]]; then
   exit 1
 fi
 
-# Output values for pipeline consumption:
 echo "##vso[task.setvariable variable=newSubscriptionId;isOutput=true]$SUB_ID"
 echo "##vso[task.setvariable variable=enabledSubscriptionState;isOutput=true]$STATUS"

@@ -1,4 +1,4 @@
-# File: pipelines/new-subcr.yml
+# File: code/pipelines/create-subcr.yml
 trigger: none
 pr: none
 
@@ -41,28 +41,38 @@ stages:
     displayName: "Provision Subscription, Move to MG, Tag"
     steps:
 
+    - task: Bash@3
+      displayName: "Update Azure CLI on agent"
+      inputs:
+        targetType: "inline"
+        script: |
+          set -e
+          echo "Updating Azure CLI on hosted agent..."
+          sudo apt-get update -y
+          sudo apt-get install -y azure-cli
+          az version
+
     - task: AzureCLI@2
-      displayName: "Create subscription (alias + wait)"
+      displayName: "Create subcr (alias + wait)"
       inputs:
         azureSubscription: "$(azureServiceConnection)"
         scriptType: "bash"
         scriptLocation: "scriptPath"
-        scriptPath: "scripts/create_subscription.sh"
+        scriptPath: "code/scripts/create-subcr/create_subcr.sh"
         arguments: >
           ${{ parameters.subscriptionDisplayName }}
           ${{ parameters.aliasName }}
           ${{ parameters.billingScope }}
           ${{ parameters.workload }}
-
       name: CreateStep
 
     - task: AzureCLI@2
-      displayName: "Finalize subscription (MG + tags + summary)"
+      displayName: "Finalize subcr (MG + tags + summary)"
       inputs:
         azureSubscription: "$(azureServiceConnection)"
         scriptType: "bash"
         scriptLocation: "scriptPath"
-        scriptPath: "scripts/finalize_subscription.sh"
+        scriptPath: "code/scripts/create-subcr/finalize_subcr.sh"
         arguments: >
           $(CreateStep.newSubscriptionId)
           ${{ parameters.managementGroupId }}
