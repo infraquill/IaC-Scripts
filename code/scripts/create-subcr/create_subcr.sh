@@ -15,10 +15,9 @@ log() {
 log "Azure CLI version (pre-check)"
 az version
 
-log "Making sure we can talk to ARM"
-az account show -o table
+log "Caller context"
+az account show -o table || echo "Note: couldn't display account (RBAC may not be fully wired yet)."
 
-# Build request body for the subscription alias
 REQUEST_BODY=$(cat <<EOF
 {
   "properties": {
@@ -30,54 +29,68 @@ REQUEST_BODY=$(cat <<EOF
 EOF
 )
 
-log "Creating new subscription alias '${ALIAS_NAME}' via az rest"
+log "Creating new subscription alias '${ALIAS_NAME}'"
 az rest \
   --method PUT \
   --url "https://management.azure.com/providers/Microsoft.Subscription/aliases/${ALIAS_NAME}?api-version=2023-11-01" \
   --body "${REQUEST_BODY}" \
   --output json
 
-log "Fetching alias details to get Subscription ID"
-SUB_JSON=$(az rest \
-  --method GET \
-  --url "https://management.azure.com/providers/Microsoft.Subscription/aliases/${ALIAS_NAME}?api-version=2023-11-01" \
-  --output json)
+log "Polling alias provisioningState until 'Succeeded' (or 'Failed')"
+ATTEMPTS=60
+SLEEPSEC=60
 
-echo "${SUB_JSON}" | jq -r '.'
+SUB_JSON=""
+PROV_STATE=""
+SUB_ID=""
+SUB_STATE=""
 
-SUB_ID=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionId')
-SUB_STATE=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionState')
-
-if [[ -z "$SUB_ID" || "$SUB_ID" == "null" ]]; then
-  echo "ERROR: Could not read subscriptionId from alias response."
-  exit 1
-fi
-
-echo "New Subscription ID  : $SUB_ID"
-echo "Initial State        : $SUB_STATE"
-
-log "Polling state for $SUB_ID until 'Enabled'"
-ATTEMPTS=30
-SLEEPSEC=20
 for i in $(seq 1 $ATTEMPTS); do
   NOW=$(date '+%Y-%m-%d %H:%M:%S')
-  # This uses regular 'az account show', which should work even if it's not default
-  STATUS=$(az account show --subscription "$SUB_ID" --query state -o tsv || true)
 
-  echo "[$NOW] Check $i/$ATTEMPTS -> state='$STATUS'"
+  SUB_JSON=$(az rest \
+    --method GET \
+    --url "https://management.azure.com/providers/Microsoft.Subscription/aliases/${ALIAS_NAME}?api-version=2023-11-01" \
+    --output json)
 
-  if [[ "$STATUS" == "Enabled" ]]; then
+  PROV_STATE=$(echo "${SUB_JSON}" | jq -r '.properties.provisioningState')
+  SUB_ID=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionId')
+  SUB_STATE=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionState')
+
+  echo "[$NOW] Check $i/$ATTEMPTS"
+  echo "  provisioningState   = ${PROV_STATE}"
+  echo "  subscriptionState   = ${SUB_STATE}"
+  echo "  subscriptionId      = ${SUB_ID}"
+
+  if [[ "${PROV_STATE}" == "Succeeded" ]]; then
+    echo "Alias provisioning completed."
     break
+  fi
+
+  if [[ "${PROV_STATE}" == "Failed" ]]; then
+    echo "ERROR: Alias provisioning failed."
+    echo "${SUB_JSON}" | jq -r '.'
+    exit 1
   fi
 
   sleep $SLEEPSEC
 done
 
-if [[ "$STATUS" != "Enabled" ]]; then
-  echo "ERROR: Subscription $SUB_ID did not reach 'Enabled'. Final state='$STATUS'"
+if [[ "${PROV_STATE}" != "Succeeded" ]]; then
+  echo "ERROR: Alias never reached 'Succeeded' within wait window. Final provisioningState='${PROV_STATE}'"
+  echo "${SUB_JSON}" | jq -r '.'
   exit 1
 fi
 
-# Export vars back to the pipeline for the finalize step
+if [[ -z "$SUB_ID" || "$SUB_ID" == "null" ]]; then
+  echo "ERROR: provisioningState=Succeeded but no subscriptionId returned."
+  echo "${SUB_JSON}" | jq -r '.'
+  exit 1
+fi
+
+log "Alias provisioning Succeeded"
+echo "Subscription ID       : ${SUB_ID}"
+echo "subscriptionState     : ${SUB_STATE}"
+
 echo "##vso[task.setvariable variable=newSubscriptionId;isOutput=true]$SUB_ID"
-echo "##vso[task.setvariable variable=enabledSubscriptionState;isOutput=true]$STATUS"
+echo "##vso[task.setvariable variable=enabledSubscriptionState;isOutput=true]$SUB_STATE"
