@@ -11,11 +11,10 @@ log() {
   echo ""
 }
 
-log "Ensuring 'account' extension is installed / up to date"
-az extension add -n account --upgrade
-
 log "Adding subscription $SUB_ID to management group '$MG_ID'"
-az account management-group subscription add --name "$MG_ID" --subscription "$SUB_ID"
+az account management-group subscription add \
+  --name "$MG_ID" \
+  --subscription "$SUB_ID"
 
 log "Applying tags to subscription scope"
 if [[ -n "$TAGS_STR" ]]; then
@@ -23,8 +22,12 @@ if [[ -n "$TAGS_STR" ]]; then
   for kv in $TAGS_STR; do
     TAG_ARGS+=("$kv")
   done
+
   echo "Tag key/values: ${TAG_ARGS[*]}"
-  az tag create --resource-id "/subscriptions/$SUB_ID" --tags "${TAG_ARGS[@]}"
+
+  az tag create \
+    --resource-id "/subscriptions/$SUB_ID" \
+    --tags "${TAG_ARGS[@]}"
 else
   echo "No tags provided, skipping tagging."
 fi

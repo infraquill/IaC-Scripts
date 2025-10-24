@@ -12,24 +12,41 @@ log() {
   echo ""
 }
 
-log "Azure CLI version (pre-upgrade check)"
+log "Azure CLI version (pre-check)"
 az version
 
-log "Ensuring 'account' extension is installed / up to date"
-az extension add -n account --upgrade
-
-log "Current Azure context (who am I?)"
+log "Making sure we can talk to ARM"
 az account show -o table
 
-log "Requesting new subscription using alias '${ALIAS_NAME}'"
-az account subscription create   --display-name "${DISPLAY_NAME}"   --billing-scope "${BILLING_SCOPE}"   --workload "${WORKLOAD}"   --alias "${ALIAS_NAME}"
+# Build request body for the subscription alias
+REQUEST_BODY=$(cat <<EOF
+{
+  "properties": {
+    "displayName": "${DISPLAY_NAME}",
+    "billingScope": "${BILLING_SCOPE}",
+    "workload": "${WORKLOAD}"
+  }
+}
+EOF
+)
 
-log "Alias created / requested. Retrieving details..."
-SUB_JSON=$(az account subscription alias show --alias "${ALIAS_NAME}" -o json)
-echo "$SUB_JSON" | jq -r '.'
+log "Creating new subscription alias '${ALIAS_NAME}' via az rest"
+az rest \
+  --method PUT \
+  --url "https://management.azure.com/providers/Microsoft.Subscription/aliases/${ALIAS_NAME}?api-version=2023-11-01" \
+  --body "${REQUEST_BODY}" \
+  --output json
 
-SUB_ID=$(echo "$SUB_JSON" | jq -r '.properties.subscriptionId')
-SUB_STATE=$(echo "$SUB_JSON" | jq -r '.properties.subscriptionState')
+log "Fetching alias details to get Subscription ID"
+SUB_JSON=$(az rest \
+  --method GET \
+  --url "https://management.azure.com/providers/Microsoft.Subscription/aliases/${ALIAS_NAME}?api-version=2023-11-01" \
+  --output json)
+
+echo "${SUB_JSON}" | jq -r '.'
+
+SUB_ID=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionId')
+SUB_STATE=$(echo "${SUB_JSON}" | jq -r '.properties.subscriptionState')
 
 if [[ -z "$SUB_ID" || "$SUB_ID" == "null" ]]; then
   echo "ERROR: Could not read subscriptionId from alias response."
@@ -44,11 +61,15 @@ ATTEMPTS=30
 SLEEPSEC=20
 for i in $(seq 1 $ATTEMPTS); do
   NOW=$(date '+%Y-%m-%d %H:%M:%S')
+  # This uses regular 'az account show', which should work even if it's not default
   STATUS=$(az account show --subscription "$SUB_ID" --query state -o tsv || true)
+
   echo "[$NOW] Check $i/$ATTEMPTS -> state='$STATUS'"
+
   if [[ "$STATUS" == "Enabled" ]]; then
     break
   fi
+
   sleep $SLEEPSEC
 done
 
@@ -57,5 +78,6 @@ if [[ "$STATUS" != "Enabled" ]]; then
   exit 1
 fi
 
+# Export vars back to the pipeline for the finalize step
 echo "##vso[task.setvariable variable=newSubscriptionId;isOutput=true]$SUB_ID"
 echo "##vso[task.setvariable variable=enabledSubscriptionState;isOutput=true]$STATUS"
