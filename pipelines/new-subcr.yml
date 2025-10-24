@@ -1,0 +1,69 @@
+# File: pipelines/create-subscription.yml
+trigger: none
+pr: none
+
+parameters:
+  - name: subscriptionDisplayName
+    type: string
+    default: "spn-sub-001"
+
+  - name: aliasName
+    type: string
+    default: "spn-sub-001"
+
+  - name: billingScope
+    type: string
+    default: "/providers/Microsoft.Billing/billingAccounts/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX:YYYYYYYY-YYYY-YYYY-YYYY-YYYYYYYYYYYY/billingProfiles/ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ/invoiceSections/WWWWWWWW-WWWW-WWWW-WWWW-WWWWWWWWWWWW"
+
+  - name: managementGroupId
+    type: string
+    default: "contoso-platform"
+
+  - name: workload
+    type: string
+    default: "Production"
+
+  - name: tags
+    type: string
+    default: "env=platform owner=azure-team"
+
+variables:
+  azureServiceConnection: "azure-spn-sc"
+
+pool:
+  vmImage: "ubuntu-latest"
+
+stages:
+- stage: Create_Subscription
+  displayName: "Create & Assign Subscription"
+  jobs:
+  - job: create
+    displayName: "Provision Subscription, Move to MG, Tag"
+    steps:
+
+    - task: AzureCLI@2
+      displayName: "Create subscription (alias + wait)"
+      inputs:
+        azureSubscription: "$(azureServiceConnection)"
+        scriptType: "bash"
+        scriptLocation: "scriptPath"
+        scriptPath: "scripts/create_subscription.sh"
+        arguments: >
+          ${{ parameters.subscriptionDisplayName }}
+          ${{ parameters.aliasName }}
+          ${{ parameters.billingScope }}
+          ${{ parameters.workload }}
+
+      name: CreateStep
+
+    - task: AzureCLI@2
+      displayName: "Finalize subscription (MG + tags + summary)"
+      inputs:
+        azureSubscription: "$(azureServiceConnection)"
+        scriptType: "bash"
+        scriptLocation: "scriptPath"
+        scriptPath: "scripts/finalize_subscription.sh"
+        arguments: >
+          $(CreateStep.newSubscriptionId)
+          ${{ parameters.managementGroupId }}
+          "${{ parameters.tags }}"
