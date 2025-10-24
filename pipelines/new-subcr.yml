@@ -1,4 +1,4 @@
-# File: pipelines/create-subscription.yml
+# File: pipelines/new-subcr.yml
 trigger: none
 pr: none
 
