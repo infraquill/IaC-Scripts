@@ -36,7 +36,3 @@ This repo automates creation of a brand new Azure subscription, assigns it to a 
   - alias request
   - poll state
   - final summary (subscriptionId, MG, tags)
-
-
-## Management group assignment
-Originally this pipeline attempted to immediately place the new subscription into a target management group. This is currently disabled because Azure eturns a permissions failure for the service principal even when it has the required custom role at tenant root and at the management group itself. We will revisit MG placement later; for now, new subscriptions are created, waited until provisioningState=Succeeded, tagged, and summarized.

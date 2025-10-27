@@ -15,6 +15,10 @@ parameters:
     type: string
     default: "/providers/Microsoft.Billing/billingAccounts/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX:YYYYYYYY-YYYY-YYYY-YYYY-YYYYYYYYYYYY/billingProfiles/ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ/invoiceSections/WWWWWWWW-WWWW-WWWW-WWWW-WWWWWWWWWWWW"
 
+  - name: managementGroupId
+    type: string
+    default: "contoso-platform"
+
   - name: workload
     type: string
     default: "Production"
@@ -31,11 +35,12 @@ pool:
 
 stages:
 - stage: Create_Subscription
-  displayName: "Create & Tag Subscription"
+  displayName: "Create & Assign Subscription"
   jobs:
   - job: create
-    displayName: "Provision Subscription and Tag"
+    displayName: "Provision Subscription, Move to MG, Tag"
     steps:
+
     - task: Bash@3
       displayName: "Update Azure CLI on agent"
       inputs:
@@ -48,7 +53,7 @@ stages:
           az version
 
     - task: AzureCLI@2
-      displayName: "Create subcr (alias + poll)"
+      displayName: "Create subcr (alias + wait)"
       inputs:
         azureSubscription: "$(azureServiceConnection)"
         scriptType: "bash"
@@ -62,7 +67,7 @@ stages:
       name: CreateStep
 
     - task: AzureCLI@2
-      displayName: "Finalize subcr (tag + summary)"
+      displayName: "Finalize subcr (MG + tags + summary)"
       inputs:
         azureSubscription: "$(azureServiceConnection)"
         scriptType: "bash"
@@ -70,4 +75,5 @@ stages:
         scriptPath: "code/scripts/create-subcr/finalize_subcr.sh"
         arguments: >
           $(CreateStep.newSubscriptionId)
+          ${{ parameters.managementGroupId }}
           "${{ parameters.tags }}"
