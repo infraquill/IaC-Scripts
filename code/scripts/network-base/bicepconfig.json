@@ -1,0 +1,11 @@
+{
+  "moduleAliases": {
+    "br": {
+      "public": {
+        "registry": "bicep",
+        "modulePath": "br/public"
+      }
+    }
+  },
+  "analyzers": { "core": { "enabled": true } }
+}
