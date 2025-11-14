@@ -1,0 +1,59 @@
+trigger:
+  branches: { include: [ main ] }
+  paths: { include: [ infra/** ] }
+
+variables:
+  env: dev
+  rgName: rg-network-hub-dev-001
+  azureServiceConnection: svc-az-wif-rg-deployer
+
+stages:
+- stage: Validate
+  jobs:
+  - job: LintBuild
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az bicep upgrade
+          az bicep version
+    - script: |
+        set -e
+        cd infra
+        az bicep build -f main.bicep -o out/main.json
+      displayName: Build Bicep
+    - publish: infra/out
+      artifact: bicep_build
+
+- stage: Preview
+  dependsOn: Validate
+  jobs:
+  - job: WhatIf
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az deployment group what-if -g $(rgName) -f infra/main.bicep -p @infra/params/$(env).parameters.json --result-format FullResourcePayloads
+
+- stage: Deploy
+  dependsOn: Preview
+  condition: succeeded()
+  jobs:
+  - job: Deploy
+    pool: { vmImage: 'ubuntu-latest' }
+    steps:
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az deployment group create -g $(rgName) -f infra/main.bicep -p @infra/params/$(env).parameters.json --only-show-errors

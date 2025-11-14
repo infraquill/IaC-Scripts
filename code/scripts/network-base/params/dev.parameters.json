@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "canadacentral" },
+    "vnetName": { "value": "vnet-hub-dev-001" },
+    "vnetAddressPrefixes": { "value": [ "10.0.0.0/16" ] },
+    "subnets": {
+      "value": {
+        "AzureFirewallSubnet": { "addressPrefix": "10.0.0.0/26" },
+        "AzureBastionSubnet": { "addressPrefix": "10.0.0.64/27" },
+        "snet-dns-inbound": { "addressPrefix": "10.0.0.96/28" },
+        "snet-dns-outbound": { "addressPrefix": "10.0.0.112/28" },
+        "snet-app": { "addressPrefix": "10.0.1.0/24" }
+      }
+    },
+    "dnsForwarders": { "value": [ { "ipAddress": "9.9.9.9" }, { "ipAddress": "1.1.1.1" } ] },
+    "enableDdos": { "value": true },
+    "firewallTier": { "value": "Standard" },
+    "extraPublicIps": { "value": 0 },
+    "tags": { "value": { "env": "dev", "owner": "platform" } }
+  }
+}
